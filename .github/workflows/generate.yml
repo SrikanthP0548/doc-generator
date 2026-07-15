@@ -4,20 +4,21 @@
 # are disabled for this org. This requires a self-hosted runner registered
 # to this repo (or org) carrying at least those two labels; adjust the
 # runs-on label set below if your runner is registered with different
-# labels. All run: steps use `shell: bash` (see `defaults` below) because
-# the pipeline's scripting (tr/sed, line continuations) is POSIX-style —
-# on a Windows runner this requires Git for Windows to be installed, which
-# bundles Git Bash and is needed anyway for actions/checkout and the git
-# commands in "Commit draft to a branch" to work at all.
+# labels. All run: steps use `shell: pwsh` (native PowerShell) — an
+# earlier version of this workflow used `shell: bash`, which on this
+# runner resolved to the built-in WSL launcher shim ahead of Git Bash on
+# PATH and failed with "execvpe(/bin/bash) failed". Native pwsh sidesteps
+# that ambiguity entirely rather than depending on which bash.exe wins.
 #
 # Self-hosted runners reuse the same disk across every run — unlike
 # GitHub-hosted runners, nothing is torn down for you automatically.
 # actions/checkout-managed paths clean themselves (git clean -ffdx) at the
 # START of their next checkout, but anything created outside a checkout
-# (the docs-output clone below, generated JSON/Markdown) does not. Each
-# job ends with an `if: always()` cleanup step so leftovers don't survive
-# a failed run either — a plain `if: success()` (the default) would skip
-# cleanup exactly when it's needed most.
+# (the docs-output clone, the manually-cloned automation-repo, generated
+# JSON/Markdown) does not. Each job ends with an `if: always()` cleanup
+# step so leftovers don't survive a failed run either — a plain
+# `if: success()` (the default) would skip cleanup exactly when it's
+# needed most.
 #
 # Required repo Variables (Settings > Secrets and variables > Actions > Variables):
 #   APP_REPO                 owner/name of the app repo code-scanner diffs, e.g. "acme/storefront"
@@ -39,6 +40,11 @@
 #                              workflow's default GITHUB_TOKEN when DOCS_REPO is this repo
 #   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
 #                              only needed when LLM_PROVIDER=bedrock and you're not using OIDC
+#
+# Note: this workflow only pushes the draft branch — it does not open a
+# pull request (that step was deferred; see src/orchestrator, which
+# covers the full scan -> map -> draft -> branch -> PR flow as a plain
+# Node CLI instead, for environments where this runner setup is painful).
 
 name: Generate Release Document
 
@@ -73,18 +79,7 @@ concurrency:
 
 defaults:
   run:
-    # Plain `shell: bash` searches PATH for "bash" — on a Windows runner
-    # that can resolve to the built-in WSL launcher shim (if it appears
-    # before Git for Windows' real bash.exe on PATH) instead of Git Bash.
-    # WSL's shim then tries to launch /bin/bash INSIDE a WSL distro, which
-    # fails if no distro is registered or WSL2 can't start (e.g. nested
-    # virtualization disabled by policy) — exactly the
-    # "execvpe(/bin/bash) failed" error this caused. Pointing at Git
-    # Bash's binary directly sidesteps PATH order entirely. Adjust the
-    # path below if Git for Windows isn't installed at the default
-    # location on this runner. Flags match GitHub's own default bash
-    # invocation (--noprofile --norc -eo pipefail).
-    shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+    shell: pwsh
 
 permissions:
   contents: write
@@ -94,79 +89,54 @@ jobs:
     runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
-      # setup-node commented out for local testing — runner already has
-      # Node 22 installed. Re-enable before relying on this for anyone
-      # else's runner, or a version mismatch will fail silently.
-      # - uses: actions/setup-node@v4
-      #   with:
-      #     node-version: '22'
-      - run: npm ci
+      - uses: ./.github/actions/setup-npm
       - name: Scan code changes
         # --base/--head accept either a tag or a branch name — the GitHub
         # compare API resolves both the same way, no special-casing needed.
         env:
           GITHUB_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
-        run: |
-          npm run scan:code -- \
-            --repo "${{ vars.APP_REPO }}" \
-            --base "${{ inputs.previous_ref }}" \
-            --head "${{ inputs.current_ref }}" \
-            --out code-scan.json
+        run: npm run scan:code -- --repo "${{ vars.APP_REPO }}" --base "${{ inputs.previous_ref }}" --head "${{ inputs.current_ref }}" --out code-scan.json
       - uses: actions/upload-artifact@v4
         with:
           name: code-scan
           path: code-scan.json
-      - name: Clean up generated output
-        if: always()
-        run: rm -f code-scan.json
+          retention-days: 1
 
   scan-tests:
     runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
-        with:
-          path: doc-generator
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ vars.AUTOMATION_REPO }}
-          ref: ${{ inputs.test_branch }}
-          token: ${{ secrets.AUTOMATION_REPO_TOKEN }}
-          path: automation-repo
-      # setup-node commented out for local testing — see scan-code job.
-      # - uses: actions/setup-node@v4
-      #   with:
-      #     node-version: '22'
-      - run: npm ci
-        working-directory: doc-generator
+      - uses: ./.github/actions/setup-npm
+      - name: Clone automation repository
+        env:
+          AUTOMATION_REPO_TOKEN: ${{ secrets.AUTOMATION_REPO_TOKEN }}
+        run: |
+          $repoUrl = "https://x-access-token:${env:AUTOMATION_REPO_TOKEN}@github.com/${{ vars.AUTOMATION_REPO }}.git"
+          if ("${{ inputs.test_branch }}" -ne "") {
+            git clone --branch "${{ inputs.test_branch }}" $repoUrl automation-repo
+          } else {
+            git clone $repoUrl automation-repo
+          }
       - name: Scan test coverage
         # test_tag_version drives the tag filter here, not previous_ref/
         # current_ref — the automation repo's .feature tags follow their
         # own convention, independent of the app repo's branch naming.
-        working-directory: doc-generator
-        run: |
-          npm run scan:test -- \
-            --path "../automation-repo/${{ vars.AUTOMATION_REPO_SUBPATH }}" \
-            --release "${{ inputs.test_tag_version }}" \
-            --module "${{ inputs.module }}" \
-            --out test-scan.json
+        run: npm run scan:test -- --path "automation-repo/${{ vars.AUTOMATION_REPO_SUBPATH }}" --release "${{ inputs.test_tag_version }}" --module "${{ inputs.module }}" --out test-scan.json
       - uses: actions/upload-artifact@v4
         with:
           name: test-scan
-          path: doc-generator/test-scan.json
-      - name: Clean up generated output
+          path: test-scan.json
+          retention-days: 1
+      - name: Clean up cloned repository
         if: always()
-        run: rm -f doc-generator/test-scan.json && rm -rf automation-repo
+        run: Remove-Item -Path "automation-repo" -Recurse -Force -ErrorAction SilentlyContinue
 
   map-and-draft:
     needs: [scan-code, scan-tests]
     runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
-      # setup-node commented out for local testing — see scan-code job.
-      # - uses: actions/setup-node@v4
-      #   with:
-      #     node-version: '22'
-      - run: npm ci
+      - uses: ./.github/actions/setup-npm
       - uses: actions/download-artifact@v4
         with:
           name: code-scan
@@ -184,13 +154,8 @@ jobs:
         # orphan-test gaps (test coverage with zero code changes) simply
         # won't be detected — untested-change gaps are unaffected.
         run: |
-          npm run map -- \
-            --code code-scan.json \
-            --tests test-scan.json \
-            --release "${{ inputs.test_tag_version }}" \
-            --modules "${{ vars.KNOWN_MODULES }}" \
-            --out mapping.json
-          cp mapping.json evidence.json
+          npm run map -- --code code-scan.json --tests test-scan.json --release "${{ inputs.test_tag_version }}" --modules "${{ vars.KNOWN_MODULES }}" --out mapping.json
+          Copy-Item -Path "mapping.json" -Destination "evidence.json"
 
       - name: Draft release document
         env:
@@ -200,38 +165,34 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-        run: |
-          npm run draft -- \
-            --mapping mapping.json \
-            --code code-scan.json \
-            --module "${{ inputs.module }}" \
-            --out release-doc.md
+        run: npm run draft -- --mapping mapping.json --code code-scan.json --module "${{ inputs.module }}" --out release-doc.md
 
       - name: Commit draft to a branch
         env:
           DOCS_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN || github.token }}
         run: |
-          DOCS_REPO="${{ vars.DOCS_REPO || github.repository }}"
-          # test_tag_version/module may contain characters unsafe for a
-          # branch name or path — sanitize both before using them.
-          sanitize() { echo "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//'; }
-          SAFE_RELEASE=$(sanitize "${{ inputs.test_tag_version }}")
-          SAFE_MODULE=$(sanitize "${{ inputs.module }}")
-          BRANCH="release-doc/$SAFE_RELEASE-$SAFE_MODULE-${{ github.run_id }}"
+          $DOCS_REPO = "${{ vars.DOCS_REPO || github.repository }}"
+          $sanitize = {
+            param($str)
+            $str = $str.ToLower()
+            $str = [regex]::Replace($str, '[^a-z0-9]', '-')
+            $str = [regex]::Replace($str, '-+', '-')
+            $str = $str -replace '^-+|-+$', ''
+            return $str
+          }
+          $SAFE_RELEASE = & $sanitize "${{ inputs.test_tag_version }}"
+          $SAFE_MODULE = & $sanitize "${{ inputs.module }}"
+          $BRANCH = "release-doc/$SAFE_RELEASE-$SAFE_MODULE-${{ github.run_id }}"
 
-          # This runner is self-hosted and reuses the same disk across
-          # runs, so a leftover docs-output from a prior run (success,
-          # failure, or crash) would make `git clone` below fail outright
-          # by cloning into a non-empty directory.
-          rm -rf docs-output
-          git clone "https://x-access-token:${DOCS_REPO_TOKEN}@github.com/${DOCS_REPO}.git" docs-output
-          cd docs-output
+          if (Test-Path "docs-output") { Remove-Item -Path "docs-output" -Recurse -Force }
+          git clone "https://x-access-token:${env:DOCS_REPO_TOKEN}@github.com/${DOCS_REPO}.git" docs-output
+          Push-Location docs-output
           git checkout -b "$BRANCH"
 
-          DOC_DIR="releases/$SAFE_RELEASE/$SAFE_MODULE"
-          mkdir -p "$DOC_DIR"
-          cp ../release-doc.md "$DOC_DIR/release-doc.md"
-          cp ../evidence.json "$DOC_DIR/evidence.json"
+          $DOC_DIR = "releases/$SAFE_RELEASE/$SAFE_MODULE"
+          New-Item -Path $DOC_DIR -ItemType Directory -Force | Out-Null
+          Copy-Item -Path "../release-doc.md" -Destination "$DOC_DIR/release-doc.md" -Force
+          Copy-Item -Path "../evidence.json" -Destination "$DOC_DIR/evidence.json" -Force
 
           git config user.name "release-doc-bot"
           git config user.email "release-doc-bot@users.noreply.github.com"
@@ -239,7 +200,8 @@ jobs:
           git commit -m "Draft release doc for ${{ inputs.test_tag_version }} (${{ inputs.module }})"
           git push origin "$BRANCH"
 
-          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "branch=$BRANCH"
+          Pop-Location
         id: commit
 
       - name: Clean up generated output
@@ -247,4 +209,10 @@ jobs:
         # .git/config, from the x-access-token clone URL) rather than
         # leaving it sitting on disk until the next run overwrites it.
         if: always()
-        run: rm -rf code-scan.json test-scan.json mapping.json evidence.json release-doc.md docs-output
+        run: |
+          Remove-Item -Path "code-scan.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "test-scan.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "mapping.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "evidence.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "release-doc.md" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "docs-output" -Recurse -Force -ErrorAction SilentlyContinue

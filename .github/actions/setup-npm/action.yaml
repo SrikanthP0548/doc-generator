@@ -1,0 +1,31 @@
+name: 'Setup NPM with Cache and Cleanup'
+description: 'Setup Node.js, clean stale node_modules, restore cache, and install dependencies'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure git for long paths
+      run: git config --global core.longpaths true
+      shell: pwsh
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+
+    - name: Verify npm is available
+      run: npm --version
+      shell: pwsh
+
+    - name: Remove stale node_modules
+      run: Remove-Item -Path "node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+      shell: pwsh
+
+    - name: Install dependencies
+      run: npm ci
+      shell: pwsh
+
+    - name: Build TypeScript
+      run: npm run build
+      shell: pwsh
