@@ -1,5 +1,12 @@
 # Manually triggered release-document generation pipeline.
 #
+# Runner: all jobs target [self-hosted, linux] — GitHub-hosted runners are
+# disabled for this org. This requires a self-hosted runner registered to
+# this repo (or org) carrying at least those two labels; adjust the
+# runs-on label set below if your runner is registered with different
+# labels. The steps assume a POSIX shell (bash, tr, sed), so the runner
+# needs to be Linux or macOS, not Windows, without further changes.
+#
 # Required repo Variables (Settings > Secrets and variables > Actions > Variables):
 #   APP_REPO                 owner/name of the app repo code-scanner diffs, e.g. "acme/storefront"
 #   AUTOMATION_REPO          owner/name of the .NET BDD/Page-Object automation repo
@@ -57,7 +64,7 @@ permissions:
 
 jobs:
   scan-code:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -81,7 +88,7 @@ jobs:
           path: code-scan.json
 
   scan-tests:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -115,7 +122,7 @@ jobs:
 
   map-and-draft:
     needs: [scan-code, scan-tests]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
