@@ -110,3 +110,38 @@ export interface MappingResult {
   mappings: MappingEntry[];
   gaps: MappingGap[];
 }
+
+export interface ModuleFacts {
+  module: string;
+  confidence: number;
+  changeCategories: ChangeCategory[];
+  fileCount: number;
+  commitCount: number;
+  scenarioCount: number;
+  filePaths: string[];
+  commitShas: string[];
+  testScenarios: MappedScenario[];
+}
+
+export interface ReleaseFacts {
+  releaseVersion: string;
+  module: string; // "All" or a specific module name
+  repo: string;
+  baseRef: string;
+  headRef: string;
+  moduleFacts: ModuleFacts[];
+  gaps: MappingGap[];
+}
+
+export interface DraftModuleSection {
+  module: string;
+  narrative: string;
+  highlights: string[];
+}
+
+export interface DraftDocument {
+  title: string;
+  summary: string;
+  moduleSections: DraftModuleSection[];
+  gapsNarrative: string;
+}

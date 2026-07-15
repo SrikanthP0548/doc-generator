@@ -2,14 +2,17 @@
 import { Command } from 'commander';
 import { writeFileSync } from 'node:fs';
 import { createGithubClient, fetchCompare, fetchCommitFiles, RawFile } from './github';
+import { fetchAllTagNames, resolveReleaseRefs } from './resolveRefs';
 import { classifyCommit } from './classify';
 import { inferModule } from './moduleInference';
 import { ChangedFile, CodeScanResult, CommitInfo, ModuleSummary } from '../common/types';
 
 interface Options {
   repo: string;
-  base: string;
-  head: string;
+  base?: string;
+  head?: string;
+  release?: string;
+  tagPrefix: string;
   token?: string;
   out?: string;
   commitFiles: boolean;
@@ -30,7 +33,20 @@ function toChangedFile(f: RawFile): ChangedFile {
 async function run(options: Options): Promise<CodeScanResult> {
   const token = options.token ?? process.env.GITHUB_TOKEN;
   const client = createGithubClient(options.repo, token);
-  const { data, truncated } = await fetchCompare(client, options.base, options.head);
+
+  let baseRef = options.base;
+  let headRef = options.head;
+  if (!baseRef || !headRef) {
+    if (!options.release) {
+      throw new Error('Provide either --base and --head, or --release to auto-resolve them from tags');
+    }
+    const tagNames = await fetchAllTagNames(client);
+    const resolved = resolveReleaseRefs(tagNames, options.release, options.tagPrefix);
+    baseRef = resolved.base;
+    headRef = resolved.head;
+  }
+
+  const { data, truncated } = await fetchCompare(client, baseRef, headRef);
 
   const commits: CommitInfo[] = [];
   for (const c of data.commits) {
@@ -70,8 +86,8 @@ async function run(options: Options): Promise<CodeScanResult> {
 
   return {
     repo: options.repo,
-    baseRef: options.base,
-    headRef: options.head,
+    baseRef,
+    headRef,
     generatedAt: new Date().toISOString(),
     commits,
     files,
@@ -87,8 +103,10 @@ program
   .name('code-scanner')
   .description('Diffs two release refs on a GitHub repo and outputs classified commits + module-tagged changed files as JSON')
   .requiredOption('--repo <owner/name>', 'GitHub repo, e.g. nvm-sh/nvm')
-  .requiredOption('--base <ref>', 'base ref (tag/branch/sha) — the older release')
-  .requiredOption('--head <ref>', 'head ref (tag/branch/sha) — the newer release')
+  .option('--base <ref>', 'base ref (tag/branch/sha) — the older release; required unless --release is given')
+  .option('--head <ref>', 'head ref (tag/branch/sha) — the newer release; required unless --release is given')
+  .option('--release <version>', 'release version to auto-resolve base/head from repo tags (semver-ordered); alternative to --base/--head')
+  .option('--tag-prefix <prefix>', 'prefix to try before --release when resolving the head tag, e.g. "v"', '')
   .option('--token <token>', 'GitHub token (defaults to $GITHUB_TOKEN); unauthenticated works for public repos at a lower rate limit')
   .option('--out <file>', 'write JSON to a file instead of stdout')
   .option(
