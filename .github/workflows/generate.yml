@@ -2,7 +2,6 @@
 #
 # Required repo Variables (Settings > Secrets and variables > Actions > Variables):
 #   APP_REPO                 owner/name of the app repo code-scanner diffs, e.g. "acme/storefront"
-#   APP_REPO_TAG_PREFIX      (optional) tag prefix tried before the raw release version, e.g. "v"
 #   AUTOMATION_REPO          owner/name of the .NET BDD/Page-Object automation repo
 #   AUTOMATION_REPO_SUBPATH  (optional) subdirectory within the automation repo containing .feature files
 #   DOCS_REPO                (optional) owner/name of the repo the draft is committed to; defaults to this repo
@@ -27,8 +26,12 @@ name: Generate Release Document
 on:
   workflow_dispatch:
     inputs:
-      release_version:
-        description: 'Release version, e.g. 26.1'
+      previous_ref:
+        description: 'Previous release (tag or branch name) — the "from" side of the code diff'
+        required: true
+        type: string
+      current_ref:
+        description: 'Current release (tag or branch name) — the "to" side of the code diff, and the release automation tests are filtered by (@current_ref)'
         required: true
         type: string
       module:
@@ -38,7 +41,7 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ inputs.release_version }}-${{ inputs.module }}
+  group: release-${{ inputs.current_ref }}-${{ inputs.module }}
   cancel-in-progress: false
 
 permissions:
@@ -54,13 +57,15 @@ jobs:
           node-version: '22'
       - run: npm ci
       - name: Scan code changes
+        # --base/--head accept either a tag or a branch name — the GitHub
+        # compare API resolves both the same way, no special-casing needed.
         env:
           GITHUB_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
         run: |
           npm run scan:code -- \
             --repo "${{ vars.APP_REPO }}" \
-            --release "${{ inputs.release_version }}" \
-            --tag-prefix "${{ vars.APP_REPO_TAG_PREFIX }}" \
+            --base "${{ inputs.previous_ref }}" \
+            --head "${{ inputs.current_ref }}" \
             --out code-scan.json
       - uses: actions/upload-artifact@v4
         with:
@@ -84,11 +89,13 @@ jobs:
       - run: npm ci
         working-directory: doc-generator
       - name: Scan test coverage
+        # Only current_ref matters here — automation tests are filtered by
+        # the release being documented, not by what it's being diffed against.
         working-directory: doc-generator
         run: |
           npm run scan:test -- \
             --path "../automation-repo/${{ vars.AUTOMATION_REPO_SUBPATH }}" \
-            --release "${{ inputs.release_version }}" \
+            --release "${{ inputs.current_ref }}" \
             --module "${{ inputs.module }}" \
             --out test-scan.json
       - uses: actions/upload-artifact@v4
@@ -125,7 +132,7 @@ jobs:
           npm run map -- \
             --code code-scan.json \
             --tests test-scan.json \
-            --release "${{ inputs.release_version }}" \
+            --release "${{ inputs.current_ref }}" \
             --modules "${{ vars.KNOWN_MODULES }}" \
             --out mapping.json
           cp mapping.json evidence.json
@@ -150,14 +157,18 @@ jobs:
           DOCS_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN || github.token }}
         run: |
           DOCS_REPO="${{ vars.DOCS_REPO || github.repository }}"
-          SAFE_MODULE=$(echo "${{ inputs.module }}" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//')
-          BRANCH="release-doc/${{ inputs.release_version }}-$SAFE_MODULE-${{ github.run_id }}"
+          # current_ref/module may be branch-like ("release/26.1") — sanitize
+          # both before using them in a branch name or filesystem path.
+          sanitize() { echo "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//'; }
+          SAFE_RELEASE=$(sanitize "${{ inputs.current_ref }}")
+          SAFE_MODULE=$(sanitize "${{ inputs.module }}")
+          BRANCH="release-doc/$SAFE_RELEASE-$SAFE_MODULE-${{ github.run_id }}"
 
           git clone "https://x-access-token:${DOCS_REPO_TOKEN}@github.com/${DOCS_REPO}.git" docs-output
           cd docs-output
           git checkout -b "$BRANCH"
 
-          DOC_DIR="releases/${{ inputs.release_version }}/$SAFE_MODULE"
+          DOC_DIR="releases/$SAFE_RELEASE/$SAFE_MODULE"
           mkdir -p "$DOC_DIR"
           cp ../release-doc.md "$DOC_DIR/release-doc.md"
           cp ../evidence.json "$DOC_DIR/evidence.json"
@@ -165,7 +176,7 @@ jobs:
           git config user.name "release-doc-bot"
           git config user.email "release-doc-bot@users.noreply.github.com"
           git add .
-          git commit -m "Draft release doc for ${{ inputs.release_version }} (${{ inputs.module }})"
+          git commit -m "Draft release doc for ${{ inputs.current_ref }} (${{ inputs.module }})"
           git push origin "$BRANCH"
 
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
