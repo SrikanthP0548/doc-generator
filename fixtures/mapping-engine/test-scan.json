@@ -1,0 +1,84 @@
+{
+  "path": "fixtures/test-scanner",
+  "release": "26.1",
+  "module": null,
+  "generatedAt": "2026-07-15T11:33:46.597Z",
+  "features": [
+    {
+      "file": "fixtures/test-scanner/Orders/OrderHistory.feature",
+      "featureName": "Order history",
+      "featureTags": [
+        "@Orders"
+      ],
+      "scenarios": [
+        {
+          "name": "View past orders",
+          "type": "Scenario",
+          "line": 5,
+          "tags": [
+            "@Orders",
+            "@26.1"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "fixtures/test-scanner/Payments/Checkout.feature",
+      "featureName": "Checkout",
+      "featureTags": [
+        "@Payments"
+      ],
+      "scenarios": [
+        {
+          "name": "Successful checkout with saved card",
+          "type": "Scenario",
+          "line": 8,
+          "tags": [
+            "@Payments",
+            "@26.1",
+            "@Smoke"
+          ]
+        },
+        {
+          "name": "Checkout supports multiple currencies",
+          "type": "Scenario Outline",
+          "line": 20,
+          "tags": [
+            "@Payments",
+            "@26.1",
+            "@Regression"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "fixtures/test-scanner/Shipping/Shipping.feature",
+      "featureName": "Shipping options",
+      "featureTags": [
+        "@Shipping"
+      ],
+      "scenarios": [
+        {
+          "name": "Customer selects express shipping",
+          "type": "Scenario",
+          "line": 5,
+          "tags": [
+            "@Shipping",
+            "@26.1"
+          ]
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "featureFileCount": 3,
+    "matchedScenarioCount": 4,
+    "modulesObserved": [
+      "Orders",
+      "Payments",
+      "Regression",
+      "Shipping",
+      "Smoke"
+    ]
+  }
+}
