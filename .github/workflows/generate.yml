@@ -38,6 +38,10 @@ on:
         description: 'Release label automation tests are tagged with, e.g. 25.3 — independent of the branch naming used by previous_ref/current_ref'
         required: true
         type: string
+      test_branch:
+        description: 'Branch (or tag) of the automation repo to check out and scan for .feature tags; blank uses its default branch'
+        required: false
+        type: string
       module:
         description: 'Module to document, or "All" for every module'
         required: true
@@ -85,6 +89,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ${{ vars.AUTOMATION_REPO }}
+          ref: ${{ inputs.test_branch }}
           token: ${{ secrets.AUTOMATION_REPO_TOKEN }}
           path: automation-repo
       - uses: actions/setup-node@v4
