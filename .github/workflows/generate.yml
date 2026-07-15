@@ -1,5 +1,24 @@
 # Manually triggered release-document generation pipeline.
 #
+# Runner: all jobs target [self-hosted, windows] — GitHub-hosted runners
+# are disabled for this org. This requires a self-hosted runner registered
+# to this repo (or org) carrying at least those two labels; adjust the
+# runs-on label set below if your runner is registered with different
+# labels. All run: steps use `shell: bash` (see `defaults` below) because
+# the pipeline's scripting (tr/sed, line continuations) is POSIX-style —
+# on a Windows runner this requires Git for Windows to be installed, which
+# bundles Git Bash and is needed anyway for actions/checkout and the git
+# commands in "Commit draft to a branch" to work at all.
+#
+# Self-hosted runners reuse the same disk across every run — unlike
+# GitHub-hosted runners, nothing is torn down for you automatically.
+# actions/checkout-managed paths clean themselves (git clean -ffdx) at the
+# START of their next checkout, but anything created outside a checkout
+# (the docs-output clone below, generated JSON/Markdown) does not. Each
+# job ends with an `if: always()` cleanup step so leftovers don't survive
+# a failed run either — a plain `if: success()` (the default) would skip
+# cleanup exactly when it's needed most.
+#
 # Required repo Variables (Settings > Secrets and variables > Actions > Variables):
 #   APP_REPO                 owner/name of the app repo code-scanner diffs, e.g. "acme/storefront"
 #   AUTOMATION_REPO          owner/name of the .NET BDD/Page-Object automation repo
@@ -52,12 +71,16 @@ concurrency:
   group: release-${{ inputs.test_tag_version }}-${{ inputs.module }}
   cancel-in-progress: false
 
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: write
 
 jobs:
   scan-code:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -79,9 +102,12 @@ jobs:
         with:
           name: code-scan
           path: code-scan.json
+      - name: Clean up generated output
+        if: always()
+        run: rm -f code-scan.json
 
   scan-tests:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -112,10 +138,13 @@ jobs:
         with:
           name: test-scan
           path: doc-generator/test-scan.json
+      - name: Clean up generated output
+        if: always()
+        run: rm -f doc-generator/test-scan.json && rm -rf automation-repo
 
   map-and-draft:
     needs: [scan-code, scan-tests]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -174,6 +203,11 @@ jobs:
           SAFE_MODULE=$(sanitize "${{ inputs.module }}")
           BRANCH="release-doc/$SAFE_RELEASE-$SAFE_MODULE-${{ github.run_id }}"
 
+          # This runner is self-hosted and reuses the same disk across
+          # runs, so a leftover docs-output from a prior run (success,
+          # failure, or crash) would make `git clone` below fail outright
+          # by cloning into a non-empty directory.
+          rm -rf docs-output
           git clone "https://x-access-token:${DOCS_REPO_TOKEN}@github.com/${DOCS_REPO}.git" docs-output
           cd docs-output
           git checkout -b "$BRANCH"
@@ -191,3 +225,10 @@ jobs:
 
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
         id: commit
+
+      - name: Clean up generated output
+        # Also removes docs-output's embedded access token (in its
+        # .git/config, from the x-access-token clone URL) rather than
+        # leaving it sitting on disk until the next run overwrites it.
+        if: always()
+        run: rm -rf code-scan.json test-scan.json mapping.json evidence.json release-doc.md docs-output
