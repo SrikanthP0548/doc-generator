@@ -73,7 +73,18 @@ concurrency:
 
 defaults:
   run:
-    shell: bash
+    # Plain `shell: bash` searches PATH for "bash" — on a Windows runner
+    # that can resolve to the built-in WSL launcher shim (if it appears
+    # before Git for Windows' real bash.exe on PATH) instead of Git Bash.
+    # WSL's shim then tries to launch /bin/bash INSIDE a WSL distro, which
+    # fails if no distro is registered or WSL2 can't start (e.g. nested
+    # virtualization disabled by policy) — exactly the
+    # "execvpe(/bin/bash) failed" error this caused. Pointing at Git
+    # Bash's binary directly sidesteps PATH order entirely. Adjust the
+    # path below if Git for Windows isn't installed at the default
+    # location on this runner. Flags match GitHub's own default bash
+    # invocation (--noprofile --norc -eo pipefail).
+    shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
 
 permissions:
   contents: write
