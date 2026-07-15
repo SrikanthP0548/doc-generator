@@ -83,9 +83,12 @@ jobs:
     runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      # setup-node commented out for local testing — runner already has
+      # Node 22 installed. Re-enable before relying on this for anyone
+      # else's runner, or a version mismatch will fail silently.
+      # - uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '22'
       - run: npm ci
       - name: Scan code changes
         # --base/--head accept either a tag or a branch name — the GitHub
@@ -118,9 +121,10 @@ jobs:
           ref: ${{ inputs.test_branch }}
           token: ${{ secrets.AUTOMATION_REPO_TOKEN }}
           path: automation-repo
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      # setup-node commented out for local testing — see scan-code job.
+      # - uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '22'
       - run: npm ci
         working-directory: doc-generator
       - name: Scan test coverage
@@ -147,9 +151,10 @@ jobs:
     runs-on: [self-hosted, windows]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      # setup-node commented out for local testing — see scan-code job.
+      # - uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '22'
       - run: npm ci
       - uses: actions/download-artifact@v4
         with:
