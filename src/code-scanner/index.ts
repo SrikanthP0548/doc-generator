@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { writeFileSync } from 'node:fs';
-import { fetchCompare } from './github';
+import { createGithubClient, fetchCompare, fetchCommitFiles, RawFile } from './github';
 import { classifyCommit } from './classify';
 import { inferModule } from './moduleInference';
 import { ChangedFile, CodeScanResult, CommitInfo, ModuleSummary } from '../common/types';
@@ -12,21 +12,11 @@ interface Options {
   head: string;
   token?: string;
   out?: string;
+  commitFiles: boolean;
 }
 
-async function run(options: Options): Promise<CodeScanResult> {
-  const token = options.token ?? process.env.GITHUB_TOKEN;
-  const { data, truncated } = await fetchCompare(options.repo, options.base, options.head, token);
-
-  const commits: CommitInfo[] = data.commits.map((c) => ({
-    sha: c.sha,
-    message: c.commit.message,
-    author: c.author?.login ?? c.commit.author?.name ?? 'unknown',
-    date: c.commit.author?.date ?? null,
-    category: classifyCommit(c.commit.message),
-  }));
-
-  const files: ChangedFile[] = (data.files ?? []).map((f) => ({
+function toChangedFile(f: RawFile): ChangedFile {
+  return {
     path: f.filename,
     status: f.status,
     additions: f.additions,
@@ -34,7 +24,33 @@ async function run(options: Options): Promise<CodeScanResult> {
     changes: f.changes,
     module: inferModule(f.filename),
     ...(f.previous_filename ? { previousPath: f.previous_filename } : {}),
-  }));
+  };
+}
+
+async function run(options: Options): Promise<CodeScanResult> {
+  const token = options.token ?? process.env.GITHUB_TOKEN;
+  const client = createGithubClient(options.repo, token);
+  const { data, truncated } = await fetchCompare(client, options.base, options.head);
+
+  const commits: CommitInfo[] = [];
+  for (const c of data.commits) {
+    const commit: CommitInfo = {
+      sha: c.sha,
+      message: c.commit.message,
+      author: c.author?.login ?? c.commit.author?.name ?? 'unknown',
+      date: c.commit.author?.date ?? null,
+      category: classifyCommit(c.commit.message),
+    };
+
+    if (options.commitFiles) {
+      const rawFiles = await fetchCommitFiles(client, c.sha);
+      commit.files = rawFiles.map(toChangedFile);
+    }
+
+    commits.push(commit);
+  }
+
+  const files: ChangedFile[] = (data.files ?? []).map(toChangedFile);
 
   const moduleTotals = new Map<string, ModuleSummary>();
   for (const file of files) {
@@ -69,12 +85,16 @@ const program = new Command();
 
 program
   .name('code-scanner')
-  .description('Diffs two release refs on a GitHub repo and outputs classified commits + module-tagged changed files as JSON')
+  .description('Diffs two refs on a GitHub repo and outputs classified commits + module-tagged changed files as JSON')
   .requiredOption('--repo <owner/name>', 'GitHub repo, e.g. nvm-sh/nvm')
-  .requiredOption('--base <ref>', 'base ref (tag/branch/sha) — the older release')
-  .requiredOption('--head <ref>', 'head ref (tag/branch/sha) — the newer release')
+  .requiredOption('--base <ref>', 'base ref — a tag or branch name (or SHA); the "previous" side of the diff')
+  .requiredOption('--head <ref>', 'head ref — a tag or branch name (or SHA); the "current" side of the diff')
   .option('--token <token>', 'GitHub token (defaults to $GITHUB_TOKEN); unauthenticated works for public repos at a lower rate limit')
   .option('--out <file>', 'write JSON to a file instead of stdout')
+  .option(
+    '--no-commit-files',
+    'skip fetching each commit\'s changed-file list (one extra API call per commit); faster, but downstream mapping evidence loses commit<->module attribution',
+  )
   .action(async (options: Options) => {
     try {
       const result = await run(options);

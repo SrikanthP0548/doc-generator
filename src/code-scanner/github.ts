@@ -1,37 +1,45 @@
 import { Octokit } from '@octokit/rest';
 
+export interface RawFile {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  previous_filename?: string;
+}
+
 export interface CompareResult {
   commits: Array<{
     sha: string;
     commit: { message: string; author: { name?: string; date?: string } | null };
     author: { login?: string } | null;
   }>;
-  files: Array<{
-    filename: string;
-    status: string;
-    additions: number;
-    deletions: number;
-    changes: number;
-    previous_filename?: string;
-  }>;
+  files: RawFile[];
 }
 
-export async function fetchCompare(
-  repo: string,
-  baseRef: string,
-  headRef: string,
-  token?: string,
-): Promise<{ data: CompareResult; truncated: boolean }> {
+export interface GithubClient {
+  octokit: Octokit;
+  owner: string;
+  name: string;
+}
+
+export function createGithubClient(repo: string, token?: string): GithubClient {
   const [owner, name] = repo.split('/');
   if (!owner || !name) {
     throw new Error(`Expected repo in "owner/name" form, got "${repo}"`);
   }
+  return { octokit: new Octokit(token ? { auth: token } : {}), owner, name };
+}
 
-  const octokit = new Octokit(token ? { auth: token } : {});
-
-  const { data } = await octokit.rest.repos.compareCommitsWithBasehead({
-    owner,
-    repo: name,
+export async function fetchCompare(
+  client: GithubClient,
+  baseRef: string,
+  headRef: string,
+): Promise<{ data: CompareResult; truncated: boolean }> {
+  const { data } = await client.octokit.rest.repos.compareCommitsWithBasehead({
+    owner: client.owner,
+    repo: client.name,
     basehead: `${baseRef}...${headRef}`,
   });
 
@@ -41,4 +49,13 @@ export async function fetchCompare(
   const truncated = totalCommits > data.commits.length;
 
   return { data: data as unknown as CompareResult, truncated };
+}
+
+export async function fetchCommitFiles(client: GithubClient, sha: string): Promise<RawFile[]> {
+  const { data } = await client.octokit.rest.repos.getCommit({
+    owner: client.owner,
+    repo: client.name,
+    ref: sha,
+  });
+  return (data.files ?? []) as RawFile[];
 }

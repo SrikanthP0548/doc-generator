@@ -1,0 +1,117 @@
+{
+  "repo": "acme/storefront",
+  "baseRef": "v26.0.0",
+  "headRef": "v26.1.0",
+  "generatedAt": "2026-07-15T00:00:00.000Z",
+  "commits": [
+    {
+      "sha": "aaa1111",
+      "message": "[New] Add saved-card checkout flow",
+      "author": "alice",
+      "date": "2026-07-01T00:00:00.000Z",
+      "category": "feature",
+      "files": [
+        {
+          "path": "src/Payments/Checkout.ts",
+          "status": "modified",
+          "additions": 120,
+          "deletions": 10,
+          "changes": 130,
+          "module": "Payments"
+        }
+      ]
+    },
+    {
+      "sha": "bbb2222",
+      "message": "[Fix] Correct currency rounding in checkout",
+      "author": "bob",
+      "date": "2026-07-02T00:00:00.000Z",
+      "category": "bugfix",
+      "files": [
+        {
+          "path": "src/Payments/Currency.ts",
+          "status": "modified",
+          "additions": 8,
+          "deletions": 2,
+          "changes": 10,
+          "module": "Payments"
+        }
+      ]
+    },
+    {
+      "sha": "ccc3333",
+      "message": "[New] Add order history pagination",
+      "author": "carol",
+      "date": "2026-07-03T00:00:00.000Z",
+      "category": "feature",
+      "files": [
+        {
+          "path": "src/Orders/History.ts",
+          "status": "modified",
+          "additions": 60,
+          "deletions": 5,
+          "changes": 65,
+          "module": "Orders"
+        }
+      ]
+    },
+    {
+      "sha": "ddd4444",
+      "message": "[Fix] Patch inventory reorder threshold",
+      "author": "dave",
+      "date": "2026-07-04T00:00:00.000Z",
+      "category": "bugfix",
+      "files": [
+        {
+          "path": "src/Inventory/Reorder.ts",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 1,
+          "changes": 5,
+          "module": "Inventory"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/Payments/Checkout.ts",
+      "status": "modified",
+      "additions": 120,
+      "deletions": 10,
+      "changes": 130,
+      "module": "Payments"
+    },
+    {
+      "path": "src/Payments/Currency.ts",
+      "status": "modified",
+      "additions": 8,
+      "deletions": 2,
+      "changes": 10,
+      "module": "Payments"
+    },
+    {
+      "path": "src/Orders/History.ts",
+      "status": "modified",
+      "additions": 60,
+      "deletions": 5,
+      "changes": 65,
+      "module": "Orders"
+    },
+    {
+      "path": "src/Inventory/Reorder.ts",
+      "status": "modified",
+      "additions": 4,
+      "deletions": 1,
+      "changes": 5,
+      "module": "Inventory"
+    }
+  ],
+  "modules": ["Inventory", "Orders", "Payments"],
+  "moduleSummary": [
+    { "module": "Inventory", "fileCount": 1, "additions": 4, "deletions": 1 },
+    { "module": "Orders", "fileCount": 1, "additions": 60, "deletions": 5 },
+    { "module": "Payments", "fileCount": 2, "additions": 128, "deletions": 12 }
+  ],
+  "truncated": false
+}

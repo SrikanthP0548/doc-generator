@@ -1,0 +1,183 @@
+# Manually triggered release-document generation pipeline.
+#
+# Required repo Variables (Settings > Secrets and variables > Actions > Variables):
+#   APP_REPO                 owner/name of the app repo code-scanner diffs, e.g. "acme/storefront"
+#   AUTOMATION_REPO          owner/name of the .NET BDD/Page-Object automation repo
+#   AUTOMATION_REPO_SUBPATH  (optional) subdirectory within the automation repo containing .feature files
+#   DOCS_REPO                (optional) owner/name of the repo the draft is committed to; defaults to this repo
+#   LLM_PROVIDER             "dummy" (default, no credentials needed) or "bedrock"
+#   BEDROCK_MODEL_ID         required when LLM_PROVIDER=bedrock
+#   AWS_REGION               required when LLM_PROVIDER=bedrock
+#   KNOWN_MODULES            (optional) comma-separated list of the app's real module names, e.g.
+#                              "Payments,Orders,Inventory,Shipping". Without it, orphan-test gaps
+#                              (test coverage for a module with zero code changes this release)
+#                              cannot be detected — see the "Build mapping" step for why.
+#
+# Required repo Secrets:
+#   APP_REPO_TOKEN            token with read access to APP_REPO (contents)
+#   AUTOMATION_REPO_TOKEN     token with read access to AUTOMATION_REPO (contents)
+#   DOCS_REPO_TOKEN           (optional) token with write access to DOCS_REPO; falls back to the
+#                              workflow's default GITHUB_TOKEN when DOCS_REPO is this repo
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
+#                              only needed when LLM_PROVIDER=bedrock and you're not using OIDC
+
+name: Generate Release Document
+
+on:
+  workflow_dispatch:
+    inputs:
+      previous_ref:
+        description: 'Previous release (tag or branch name) — the "from" side of the code diff'
+        required: true
+        type: string
+      current_ref:
+        description: 'Current release (tag or branch name) — the "to" side of the code diff, and the release automation tests are filtered by (@current_ref)'
+        required: true
+        type: string
+      module:
+        description: 'Module to document, or "All" for every module'
+        required: true
+        default: 'All'
+        type: string
+
+concurrency:
+  group: release-${{ inputs.current_ref }}-${{ inputs.module }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  scan-code:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Scan code changes
+        # --base/--head accept either a tag or a branch name — the GitHub
+        # compare API resolves both the same way, no special-casing needed.
+        env:
+          GITHUB_TOKEN: ${{ secrets.APP_REPO_TOKEN }}
+        run: |
+          npm run scan:code -- \
+            --repo "${{ vars.APP_REPO }}" \
+            --base "${{ inputs.previous_ref }}" \
+            --head "${{ inputs.current_ref }}" \
+            --out code-scan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: code-scan
+          path: code-scan.json
+
+  scan-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: doc-generator
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.AUTOMATION_REPO }}
+          token: ${{ secrets.AUTOMATION_REPO_TOKEN }}
+          path: automation-repo
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+        working-directory: doc-generator
+      - name: Scan test coverage
+        # Only current_ref matters here — automation tests are filtered by
+        # the release being documented, not by what it's being diffed against.
+        working-directory: doc-generator
+        run: |
+          npm run scan:test -- \
+            --path "../automation-repo/${{ vars.AUTOMATION_REPO_SUBPATH }}" \
+            --release "${{ inputs.current_ref }}" \
+            --module "${{ inputs.module }}" \
+            --out test-scan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-scan
+          path: doc-generator/test-scan.json
+
+  map-and-draft:
+    needs: [scan-code, scan-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: code-scan
+      - uses: actions/download-artifact@v4
+        with:
+          name: test-scan
+
+      - name: Build mapping
+        # KNOWN_MODULES (repo Variable, comma-separated) is the app's real
+        # module vocabulary. test-scanner's modulesObserved is NOT a safe
+        # substitute here — it's every non-numeric tag seen (including
+        # @Smoke, @Regression, etc.), and feeding that into --modules
+        # produces false-positive orphan-test gaps for QA-priority tags
+        # that aren't modules at all. Until KNOWN_MODULES is populated,
+        # orphan-test gaps (test coverage with zero code changes) simply
+        # won't be detected — untested-change gaps are unaffected.
+        run: |
+          npm run map -- \
+            --code code-scan.json \
+            --tests test-scan.json \
+            --release "${{ inputs.current_ref }}" \
+            --modules "${{ vars.KNOWN_MODULES }}" \
+            --out mapping.json
+          cp mapping.json evidence.json
+
+      - name: Draft release document
+        env:
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'dummy' }}
+          BEDROCK_MODEL_ID: ${{ vars.BEDROCK_MODEL_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: |
+          npm run draft -- \
+            --mapping mapping.json \
+            --code code-scan.json \
+            --module "${{ inputs.module }}" \
+            --out release-doc.md
+
+      - name: Commit draft to a branch
+        env:
+          DOCS_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN || github.token }}
+        run: |
+          DOCS_REPO="${{ vars.DOCS_REPO || github.repository }}"
+          # current_ref/module may be branch-like ("release/26.1") — sanitize
+          # both before using them in a branch name or filesystem path.
+          sanitize() { echo "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//'; }
+          SAFE_RELEASE=$(sanitize "${{ inputs.current_ref }}")
+          SAFE_MODULE=$(sanitize "${{ inputs.module }}")
+          BRANCH="release-doc/$SAFE_RELEASE-$SAFE_MODULE-${{ github.run_id }}"
+
+          git clone "https://x-access-token:${DOCS_REPO_TOKEN}@github.com/${DOCS_REPO}.git" docs-output
+          cd docs-output
+          git checkout -b "$BRANCH"
+
+          DOC_DIR="releases/$SAFE_RELEASE/$SAFE_MODULE"
+          mkdir -p "$DOC_DIR"
+          cp ../release-doc.md "$DOC_DIR/release-doc.md"
+          cp ../evidence.json "$DOC_DIR/evidence.json"
+
+          git config user.name "release-doc-bot"
+          git config user.email "release-doc-bot@users.noreply.github.com"
+          git add .
+          git commit -m "Draft release doc for ${{ inputs.current_ref }} (${{ inputs.module }})"
+          git push origin "$BRANCH"
+
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+        id: commit

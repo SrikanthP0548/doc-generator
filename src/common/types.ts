@@ -13,6 +13,11 @@ export interface CommitInfo {
   author: string;
   date: string | null;
   category: ChangeCategory;
+  // Per-commit changed files, module-tagged. Populated when code-scanner
+  // runs with commit-file attribution enabled (the default); omitted when
+  // run with --no-commit-files, in which case module<->commit attribution
+  // cannot be made precisely downstream.
+  files?: ChangedFile[];
 }
 
 export interface ChangedFile {
@@ -69,4 +74,74 @@ export interface TestScanResult {
     matchedScenarioCount: number;
     modulesObserved: string[];
   };
+}
+
+export interface MappedScenario {
+  file: string;
+  scenario: string;
+  tags: string[];
+}
+
+export interface MappingEvidence {
+  matchedTag: string;
+  filePaths: string[];
+  commitShas: string[];
+  testScenarios: MappedScenario[];
+}
+
+export interface MappingEntry {
+  module: string;
+  confidence: number;
+  evidence: MappingEvidence;
+}
+
+export type MappingGapType = 'untested-change' | 'orphan-test';
+
+export interface MappingGap {
+  type: MappingGapType;
+  module: string;
+  detail: string;
+}
+
+export interface MappingResult {
+  releaseVersion: string;
+  generatedAt: string;
+  commitFileAttributionAvailable: boolean;
+  mappings: MappingEntry[];
+  gaps: MappingGap[];
+}
+
+export interface ModuleFacts {
+  module: string;
+  confidence: number;
+  changeCategories: ChangeCategory[];
+  fileCount: number;
+  commitCount: number;
+  scenarioCount: number;
+  filePaths: string[];
+  commitShas: string[];
+  testScenarios: MappedScenario[];
+}
+
+export interface ReleaseFacts {
+  releaseVersion: string;
+  module: string; // "All" or a specific module name
+  repo: string;
+  baseRef: string;
+  headRef: string;
+  moduleFacts: ModuleFacts[];
+  gaps: MappingGap[];
+}
+
+export interface DraftModuleSection {
+  module: string;
+  narrative: string;
+  highlights: string[];
+}
+
+export interface DraftDocument {
+  title: string;
+  summary: string;
+  moduleSections: DraftModuleSection[];
+  gapsNarrative: string;
 }

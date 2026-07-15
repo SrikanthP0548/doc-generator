@@ -1,0 +1,77 @@
+{
+  "releaseVersion": "26.1",
+  "generatedAt": "2026-07-15T11:35:41.883Z",
+  "commitFileAttributionAvailable": true,
+  "mappings": [
+    {
+      "module": "Orders",
+      "confidence": 0.8,
+      "evidence": {
+        "matchedTag": "@Orders",
+        "filePaths": [
+          "src/Orders/History.ts"
+        ],
+        "commitShas": [
+          "ccc3333"
+        ],
+        "testScenarios": [
+          {
+            "file": "fixtures/test-scanner/Orders/OrderHistory.feature",
+            "scenario": "View past orders",
+            "tags": [
+              "@Orders",
+              "@26.1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "module": "Payments",
+      "confidence": 0.85,
+      "evidence": {
+        "matchedTag": "@Payments",
+        "filePaths": [
+          "src/Payments/Checkout.ts",
+          "src/Payments/Currency.ts"
+        ],
+        "commitShas": [
+          "aaa1111",
+          "bbb2222"
+        ],
+        "testScenarios": [
+          {
+            "file": "fixtures/test-scanner/Payments/Checkout.feature",
+            "scenario": "Successful checkout with saved card",
+            "tags": [
+              "@Payments",
+              "@26.1",
+              "@Smoke"
+            ]
+          },
+          {
+            "file": "fixtures/test-scanner/Payments/Checkout.feature",
+            "scenario": "Checkout supports multiple currencies",
+            "tags": [
+              "@Payments",
+              "@26.1",
+              "@Regression"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "gaps": [
+    {
+      "type": "untested-change",
+      "module": "Inventory",
+      "detail": "1 file(s) changed in \"Inventory\" for 26.1 but no automation scenario tagged @Inventory @26.1 was found"
+    },
+    {
+      "type": "orphan-test",
+      "module": "Shipping",
+      "detail": "1 scenario(s) tagged @Shipping @26.1 found but no code changes touched \"Shipping\" in this release"
+    }
+  ]
+}

@@ -7,10 +7,13 @@
   "scripts": {
     "scan:code": "tsx src/code-scanner/index.ts",
     "scan:test": "tsx src/test-scanner/index.ts",
+    "map": "tsx src/mapping-engine/index.ts",
+    "draft": "tsx src/doc-generator/index.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1087.0",
     "@octokit/rest": "^21.0.2",
     "commander": "^12.1.0"
   },
