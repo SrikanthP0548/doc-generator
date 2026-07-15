@@ -34,7 +34,7 @@ on:
         description: 'Current release branch/tag — the "to" side of the code diff, e.g. release/25.3.0'
         required: true
         type: string
-      release_version:
+      test_tag_version:
         description: 'Release label automation tests are tagged with, e.g. 25.3 — independent of the branch naming used by previous_ref/current_ref'
         required: true
         type: string
@@ -45,7 +45,7 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ inputs.release_version }}-${{ inputs.module }}
+  group: release-${{ inputs.test_tag_version }}-${{ inputs.module }}
   cancel-in-progress: false
 
 permissions:
@@ -93,14 +93,14 @@ jobs:
       - run: npm ci
         working-directory: doc-generator
       - name: Scan test coverage
-        # release_version drives the tag filter here, not previous_ref/
+        # test_tag_version drives the tag filter here, not previous_ref/
         # current_ref — the automation repo's .feature tags follow their
         # own convention, independent of the app repo's branch naming.
         working-directory: doc-generator
         run: |
           npm run scan:test -- \
             --path "../automation-repo/${{ vars.AUTOMATION_REPO_SUBPATH }}" \
-            --release "${{ inputs.release_version }}" \
+            --release "${{ inputs.test_tag_version }}" \
             --module "${{ inputs.module }}" \
             --out test-scan.json
       - uses: actions/upload-artifact@v4
@@ -137,7 +137,7 @@ jobs:
           npm run map -- \
             --code code-scan.json \
             --tests test-scan.json \
-            --release "${{ inputs.release_version }}" \
+            --release "${{ inputs.test_tag_version }}" \
             --modules "${{ vars.KNOWN_MODULES }}" \
             --out mapping.json
           cp mapping.json evidence.json
@@ -162,10 +162,10 @@ jobs:
           DOCS_REPO_TOKEN: ${{ secrets.DOCS_REPO_TOKEN || github.token }}
         run: |
           DOCS_REPO="${{ vars.DOCS_REPO || github.repository }}"
-          # release_version/module may contain characters unsafe for a
+          # test_tag_version/module may contain characters unsafe for a
           # branch name or path — sanitize both before using them.
           sanitize() { echo "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '-' | sed 's/-\+/-/g; s/^-//; s/-$//'; }
-          SAFE_RELEASE=$(sanitize "${{ inputs.release_version }}")
+          SAFE_RELEASE=$(sanitize "${{ inputs.test_tag_version }}")
           SAFE_MODULE=$(sanitize "${{ inputs.module }}")
           BRANCH="release-doc/$SAFE_RELEASE-$SAFE_MODULE-${{ github.run_id }}"
 
@@ -181,7 +181,7 @@ jobs:
           git config user.name "release-doc-bot"
           git config user.email "release-doc-bot@users.noreply.github.com"
           git add .
-          git commit -m "Draft release doc for ${{ inputs.release_version }} (${{ inputs.module }})"
+          git commit -m "Draft release doc for ${{ inputs.test_tag_version }} (${{ inputs.module }})"
           git push origin "$BRANCH"
 
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
