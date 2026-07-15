@@ -24,11 +24,33 @@ export interface GithubClient {
   name: string;
 }
 
-export function createGithubClient(repo: string, token?: string): GithubClient {
-  const [owner, name] = repo.split('/');
-  if (!owner || !name) {
-    throw new Error(`Expected repo in "owner/name" form, got "${repo}"`);
+// Accepts a bare "owner/repo" as documented, but also tolerates the most
+// common ways people accidentally paste a URL instead — stripping a
+// leading scheme/host or a git@ prefix and a trailing ".git" or slash —
+// so a copy-pasted URL fails with a clear message instead of silently
+// resolving to the wrong owner/repo and a confusing 404 from GitHub.
+export function parseRepoSpec(repo: string): { owner: string; name: string } {
+  const normalized = repo
+    .trim()
+    .replace(/^(?:https?:\/\/)?(?:www\.)?github\.com\//i, '')
+    .replace(/^git@github\.com:/i, '')
+    .replace(/\.git$/i, '')
+    .replace(/\/+$/, '');
+
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length !== 2) {
+    throw new Error(
+      `Expected repo in "owner/name" form (e.g. "acme/storefront"), got "${repo}"` +
+        (normalized !== repo ? ` (normalized to "${normalized}")` : ''),
+    );
   }
+
+  const [owner, name] = segments;
+  return { owner, name };
+}
+
+export function createGithubClient(repo: string, token?: string): GithubClient {
+  const { owner, name } = parseRepoSpec(repo);
   return { octokit: new Octokit(token ? { auth: token } : {}), owner, name };
 }
 
