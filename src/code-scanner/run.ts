@@ -20,6 +20,7 @@ function toChangedFile(f: RawFile): ChangedFile {
     changes: f.changes,
     module: inferModule(f.filename),
     ...(f.previous_filename ? { previousPath: f.previous_filename } : {}),
+    ...(f.patch ? { patch: f.patch } : {}),
   };
 }
 

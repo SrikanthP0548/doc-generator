@@ -1,4 +1,16 @@
-import { CodeScanResult, MappingResult, ModuleFacts, ReleaseFacts } from '../common/types';
+import { ChangedFile, CodeScanResult, MappingResult, ModuleFacts, ReleaseFacts } from '../common/types';
+
+// Bounds how much diff text reaches the prompt per file — a release can
+// touch dozens of files, and unbounded patches would make prompt size
+// scale with total diff size rather than release size. GitHub itself
+// already omits `patch` for files it considers too large or binary, so
+// this only trims the remaining "large but text" case.
+const MAX_PATCH_CHARS = 2000;
+
+function boundPatch(file: ChangedFile): ChangedFile {
+  if (!file.patch || file.patch.length <= MAX_PATCH_CHARS) return file;
+  return { ...file, patch: `${file.patch.slice(0, MAX_PATCH_CHARS)}\n... (truncated)` };
+}
 
 export function buildReleaseFacts(
   mapping: MappingResult,
@@ -6,6 +18,7 @@ export function buildReleaseFacts(
   module: string,
 ): ReleaseFacts {
   const commitBySha = new Map(code.commits.map((c) => [c.sha, c]));
+  const fileByPath = new Map(code.files.map((f) => [f.path, f]));
   const moduleFilter = module.toLowerCase() === 'all' ? null : module;
 
   const relevantMappings = moduleFilter
@@ -26,14 +39,22 @@ export function buildReleaseFacts(
 
     const changeCategories = [...new Set(commits.map((c) => c.category))];
 
+    // Resolve each evidence path back to its full ChangedFile (status,
+    // +/- counts, and a bounded diff patch) — a bare path tells the
+    // drafting step nothing about what actually changed there.
+    const files = m.evidence.filePaths
+      .map((path) => fileByPath.get(path))
+      .filter((f): f is NonNullable<typeof f> => f !== undefined)
+      .map(boundPatch);
+
     return {
       module: m.module,
       confidence: m.confidence,
       changeCategories,
-      fileCount: m.evidence.filePaths.length,
+      fileCount: files.length,
       commitCount: m.evidence.commitShas.length,
       scenarioCount: m.evidence.testScenarios.length,
-      filePaths: m.evidence.filePaths,
+      files,
       commits,
       testScenarios: m.evidence.testScenarios,
     };

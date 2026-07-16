@@ -46,7 +46,7 @@ export class DummyLlmClient implements LlmClient {
       return {
         module: m.module,
         narrative,
-        highlights: m.filePaths.slice(0, 5),
+        highlights: m.files.slice(0, 5).map((f) => `${f.path} (+${f.additions}/-${f.deletions})`),
       };
     });
 

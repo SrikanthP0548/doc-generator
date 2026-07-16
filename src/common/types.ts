@@ -28,6 +28,9 @@ export interface ChangedFile {
   changes: number;
   module: string;
   previousPath?: string;
+  // Unified diff text for this file, when GitHub returns one — omitted
+  // for binary files and files GitHub considers too large to diff.
+  patch?: string;
 }
 
 export interface ModuleSummary {
@@ -129,7 +132,10 @@ export interface ModuleFacts {
   fileCount: number;
   commitCount: number;
   scenarioCount: number;
-  filePaths: string[];
+  // Full file objects (status, +/- counts, and a bounded diff patch when
+  // available) rather than bare paths — the drafting LLM needs to see
+  // what actually changed, not just which files were touched.
+  files: ChangedFile[];
   // Full commit message + category per commit, not just SHAs — the
   // drafting LLM needs actual descriptive text to write a narrative
   // beyond "N commits categorized as feature/bugfix".
