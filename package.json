@@ -4,11 +4,22 @@
   "private": true,
   "description": "Internal tool that generates product-readable release documents from code diffs and automation test coverage",
   "type": "commonjs",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "release-doc-generate": "dist/orchestrator/index.js",
+    "release-doc-scan-code": "dist/code-scanner/index.js",
+    "release-doc-scan-tests": "dist/test-scanner/index.js",
+    "release-doc-map": "dist/mapping-engine/index.js",
+    "release-doc-draft": "dist/doc-generator/index.js"
+  },
   "scripts": {
     "scan:code": "tsx src/code-scanner/index.ts",
     "scan:test": "tsx src/test-scanner/index.ts",
     "map": "tsx src/mapping-engine/index.ts",
     "draft": "tsx src/doc-generator/index.ts",
+    "generate": "tsx src/orchestrator/index.ts",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

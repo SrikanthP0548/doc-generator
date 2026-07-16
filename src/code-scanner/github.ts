@@ -7,6 +7,7 @@ export interface RawFile {
   deletions: number;
   changes: number;
   previous_filename?: string;
+  patch?: string;
 }
 
 export interface CompareResult {

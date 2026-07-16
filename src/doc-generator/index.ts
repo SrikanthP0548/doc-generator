@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { buildReleaseFacts } from './releaseFacts';
-import { createLlmClient } from './createLlmClient';
-import { renderMarkdown } from './renderMarkdown';
+import { runDocGenerator } from './run';
 import { CodeScanResult, MappingResult } from '../common/types';
 
-interface Options {
+interface CliOptions {
   mapping: string;
   code: string;
   module: string;
@@ -26,15 +24,12 @@ program
   .requiredOption('--code <file>', 'code-scanner JSON output file')
   .option('--module <module>', 'module to draft for; "All" for all modules', 'All')
   .option('--out <file>', 'write Markdown to a file instead of stdout')
-  .action(async (options: Options) => {
+  .action(async (options: CliOptions) => {
     try {
       const mapping = readJson<MappingResult>(options.mapping);
       const code = readJson<CodeScanResult>(options.code);
 
-      const facts = buildReleaseFacts(mapping, code, options.module);
-      const client = createLlmClient();
-      const draft = await client.draftStructured(facts);
-      const markdown = renderMarkdown(draft, facts);
+      const { markdown } = await runDocGenerator(mapping, code, options.module);
 
       if (options.out) {
         writeFileSync(options.out, markdown);
