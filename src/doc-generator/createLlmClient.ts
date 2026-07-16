@@ -6,6 +6,10 @@ import { BedrockLlmClient } from './bedrockLlmClient';
 // deterministic draft — useful until a real Bedrock model/key is wired
 // up. LLM_PROVIDER=bedrock requires BEDROCK_MODEL_ID and an AWS region
 // to be set explicitly; no model ID is guessed or defaulted.
+//
+// Credentials for Bedrock are intentionally not handled here — see
+// BedrockLlmClient for why, and how to set AWS_BEARER_TOKEN_BEDROCK for
+// a Bedrock API key specifically.
 export function createLlmClient(): LlmClient {
   const provider = (process.env.LLM_PROVIDER ?? 'dummy').toLowerCase();
 
