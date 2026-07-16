@@ -1,6 +1,6 @@
 {
   "releaseVersion": "26.1",
-  "generatedAt": "2026-07-15T11:35:41.883Z",
+  "generatedAt": "2026-07-16T12:12:26.247Z",
   "commitFileAttributionAvailable": true,
   "mappings": [
     {
@@ -21,6 +21,11 @@
             "tags": [
               "@Orders",
               "@26.1"
+            ],
+            "steps": [
+              "Given a customer with order history",
+              "When the customer opens the order history page",
+              "Then the past orders are listed"
             ]
           }
         ]
@@ -47,6 +52,11 @@
               "@Payments",
               "@26.1",
               "@Smoke"
+            ],
+            "steps": [
+              "Given a customer has items in the cart",
+              "When the customer checks out with a saved card",
+              "Then the order is confirmed"
             ]
           },
           {
@@ -56,6 +66,11 @@
               "@Payments",
               "@26.1",
               "@Regression"
+            ],
+            "steps": [
+              "Given a customer has items in the cart priced in \"<currency>\"",
+              "When the customer checks out",
+              "Then the order total is shown in \"<currency>\""
             ]
           }
         ]
