@@ -2,7 +2,7 @@
   "path": "fixtures/test-scanner",
   "release": "26.1",
   "module": null,
-  "generatedAt": "2026-07-15T11:33:46.597Z",
+  "generatedAt": "2026-07-16T12:12:25.513Z",
   "features": [
     {
       "file": "fixtures/test-scanner/Orders/OrderHistory.feature",
@@ -18,6 +18,11 @@
           "tags": [
             "@Orders",
             "@26.1"
+          ],
+          "steps": [
+            "Given a customer with order history",
+            "When the customer opens the order history page",
+            "Then the past orders are listed"
           ]
         }
       ]
@@ -37,6 +42,11 @@
             "@Payments",
             "@26.1",
             "@Smoke"
+          ],
+          "steps": [
+            "Given a customer has items in the cart",
+            "When the customer checks out with a saved card",
+            "Then the order is confirmed"
           ]
         },
         {
@@ -47,6 +57,11 @@
             "@Payments",
             "@26.1",
             "@Regression"
+          ],
+          "steps": [
+            "Given a customer has items in the cart priced in \"<currency>\"",
+            "When the customer checks out",
+            "Then the order total is shown in \"<currency>\""
           ]
         }
       ]
@@ -65,6 +80,11 @@
           "tags": [
             "@Shipping",
             "@26.1"
+          ],
+          "steps": [
+            "Given a customer is at checkout",
+            "When the customer selects express shipping",
+            "Then the shipping cost is updated"
           ]
         }
       ]
