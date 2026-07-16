@@ -5,7 +5,7 @@ export function buildReleaseFacts(
   code: CodeScanResult,
   module: string,
 ): ReleaseFacts {
-  const commitCategoryBySha = new Map(code.commits.map((c) => [c.sha, c.category]));
+  const commitBySha = new Map(code.commits.map((c) => [c.sha, c]));
   const moduleFilter = module.toLowerCase() === 'all' ? null : module;
 
   const relevantMappings = moduleFilter
@@ -16,13 +16,15 @@ export function buildReleaseFacts(
     : mapping.gaps;
 
   const moduleFacts: ModuleFacts[] = relevantMappings.map((m) => {
-    const changeCategories = [
-      ...new Set(
-        m.evidence.commitShas
-          .map((sha) => commitCategoryBySha.get(sha))
-          .filter((c): c is NonNullable<typeof c> => c !== undefined),
-      ),
-    ];
+    // Resolve each evidence SHA back to its full commit — message text is
+    // what actually lets the drafting step describe *what* changed, not
+    // just how many commits touched how many files.
+    const commits = m.evidence.commitShas
+      .map((sha) => commitBySha.get(sha))
+      .filter((c): c is NonNullable<typeof c> => c !== undefined)
+      .map((c) => ({ sha: c.sha, message: c.message, category: c.category }));
+
+    const changeCategories = [...new Set(commits.map((c) => c.category))];
 
     return {
       module: m.module,
@@ -32,7 +34,7 @@ export function buildReleaseFacts(
       commitCount: m.evidence.commitShas.length,
       scenarioCount: m.evidence.testScenarios.length,
       filePaths: m.evidence.filePaths,
-      commitShas: m.evidence.commitShas,
+      commits,
       testScenarios: m.evidence.testScenarios,
     };
   });

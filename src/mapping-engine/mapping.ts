@@ -40,6 +40,7 @@ export function buildMapping(
           file: feature.file,
           scenario: scenario.name,
           tags: scenario.tags,
+          steps: scenario.steps,
           matchedTag: `@${selectedModule}`,
         });
       }
@@ -69,7 +70,7 @@ export function buildMapping(
           matchedTag: `@${selectedModule}`,
           filePaths: code.files.map((f) => f.path),
           commitShas: [...commitShas],
-          testScenarios: allScenarios.map((s) => ({ file: s.file, scenario: s.scenario, tags: s.tags })),
+          testScenarios: allScenarios.map((s) => ({ file: s.file, scenario: s.scenario, tags: s.tags, steps: s.steps })),
         },
       });
     } else if (code.files.length === 0 && allScenarios.length > 0) {
@@ -147,7 +148,13 @@ export function buildMapping(
         if (!module) continue;
 
         const list = moduleToScenarios.get(module) ?? [];
-        list.push({ file: feature.file, scenario: scenario.name, tags: scenario.tags, matchedTag: tag });
+        list.push({
+          file: feature.file,
+          scenario: scenario.name,
+          tags: scenario.tags,
+          steps: scenario.steps,
+          matchedTag: tag,
+        });
         moduleToScenarios.set(module, list);
       }
     }
@@ -196,7 +203,7 @@ export function buildMapping(
         matchedTag: `@${module}`,
         filePaths: files.map((f) => f.path),
         commitShas: [...(moduleToCommits.get(module) ?? [])],
-        testScenarios: scenarios.map(({ file, scenario, tags }) => ({ file, scenario, tags })),
+        testScenarios: scenarios.map(({ file, scenario, tags, steps }) => ({ file, scenario, tags, steps })),
       },
     });
   }

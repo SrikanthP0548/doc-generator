@@ -54,6 +54,10 @@ export interface FeatureScenario {
   type: 'Scenario' | 'Scenario Outline';
   line: number;
   tags: string[];
+  // Given/When/Then/And/But step lines directly under this scenario
+  // (not inherited from a Background: block) — the actual behavior being
+  // verified, as opposed to just the scenario's title.
+  steps: string[];
 }
 
 export interface FeatureFileTags {
@@ -80,6 +84,7 @@ export interface MappedScenario {
   file: string;
   scenario: string;
   tags: string[];
+  steps: string[];
 }
 
 export interface MappingEvidence {
@@ -111,6 +116,12 @@ export interface MappingResult {
   gaps: MappingGap[];
 }
 
+export interface CommitSummary {
+  sha: string;
+  message: string;
+  category: ChangeCategory;
+}
+
 export interface ModuleFacts {
   module: string;
   confidence: number;
@@ -119,7 +130,10 @@ export interface ModuleFacts {
   commitCount: number;
   scenarioCount: number;
   filePaths: string[];
-  commitShas: string[];
+  // Full commit message + category per commit, not just SHAs — the
+  // drafting LLM needs actual descriptive text to write a narrative
+  // beyond "N commits categorized as feature/bugfix".
+  commits: CommitSummary[];
   testScenarios: MappedScenario[];
 }
 

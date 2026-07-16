@@ -2,6 +2,7 @@ import { FeatureFileTags, FeatureScenario } from '../common/types';
 
 const TAG_LINE = /^@\S+(\s+@\S+)*$/;
 const TAG_TOKEN = /@\S+/g;
+const STEP_LINE = /^(Given|When|Then|And|But|\*)\s+.+$/;
 
 function extractTags(line: string): string[] {
   return line.trim().match(TAG_TOKEN) ?? [];
@@ -52,13 +53,23 @@ export function parseFeatureFile(file: string, content: string): FeatureFileTags
         type,
         line: i + 1,
         tags: dedupe([...featureTags, ...ownTags]),
+        steps: [],
       });
       continue;
     }
 
-    // Any other content (Background:, steps, Examples: tables, docstrings)
-    // does not consume pending tags; a stray tag block followed by such a
-    // line is left dangling and is dropped at the next Scenario/EOF.
+    // Step lines (Given/When/Then/And/But/*) attach to whichever scenario
+    // was most recently opened — this only captures steps written
+    // directly under the scenario, not ones inherited from a Background:
+    // block above it.
+    if (STEP_LINE.test(trimmed) && scenarios.length > 0) {
+      scenarios[scenarios.length - 1].steps.push(trimmed);
+      continue;
+    }
+
+    // Any other content (Background:, Examples: tables, docstrings) does
+    // not consume pending tags; a stray tag block followed by such a line
+    // is left dangling and is dropped at the next Scenario/EOF.
   }
 
   return { file, featureName, featureTags, scenarios };
