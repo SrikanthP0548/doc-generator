@@ -10,6 +10,7 @@ import { runDocGenerator } from '../doc-generator/run';
 import { cloneRepo, checkoutNewBranch, configureIdentity, addAll, commit, push } from './git';
 import { getDefaultBranch, openPullRequest } from './githubPr';
 import { sanitizeForPath } from './sanitize';
+import { mergeCodeScanResults } from './mergeCodeScans';
 
 interface CliOptions {
   appRepo: string;
@@ -47,15 +48,27 @@ async function run(options: CliOptions): Promise<void> {
 
   try {
     const automationCheckoutDir = join(workDir, 'automation-repo');
+    const appRepos = options.appRepo.split(',').map((r) => r.trim()).filter(Boolean);
+    if (appRepos.length === 0) {
+      throw new Error('--app-repo must name at least one repo');
+    }
 
-    console.error('Scanning code changes and test coverage in parallel...');
-    const [codeResult, testResult] = await Promise.all([
-      runCodeScanner({
-        repo: options.appRepo,
-        base: options.previousRef,
-        head: options.currentRef,
-        token: appToken,
-      }),
+    console.error(
+      appRepos.length > 1
+        ? `Scanning ${appRepos.length} app repos and test coverage in parallel...`
+        : 'Scanning code changes and test coverage in parallel...',
+    );
+    const [codeResults, testResult] = await Promise.all([
+      Promise.all(
+        appRepos.map((repo) =>
+          runCodeScanner({
+            repo,
+            base: options.previousRef,
+            head: options.currentRef,
+            token: appToken,
+          }),
+        ),
+      ),
       (async () => {
         await cloneRepo(options.automationRepo, automationToken, automationCheckoutDir, {
           ref: options.testBranch,
@@ -72,7 +85,10 @@ async function run(options: CliOptions): Promise<void> {
       })(),
     ]);
 
-    console.error(`Code scan: ${codeResult.commits.length} commits, ${codeResult.files.length} files changed`);
+    const codeResult = mergeCodeScanResults(codeResults);
+    console.error(
+      `Code scan: ${appRepos.length} repo(s), ${codeResult.commits.length} commits, ${codeResult.files.length} files changed`,
+    );
     console.error(`Test scan: ${testResult.summary.matchedScenarioCount} matching scenario(s)`);
 
     console.error('Building mapping...');
@@ -137,7 +153,10 @@ const program = new Command();
 program
   .name('release-doc-generate')
   .description('End-to-end release document generation: scan, map, draft, and open a PR — no CI runner required')
-  .requiredOption('--app-repo <owner/name>', 'app repo code-scanner diffs')
+  .requiredOption(
+    '--app-repo <owner/name[,owner/name...]>',
+    'app repo(s) code-scanner diffs, comma-separated if the module\'s code spans multiple repos (e.g. a UI repo + an API repo) — all diffed with the same --previous-ref/--current-ref',
+  )
   .requiredOption('--previous-ref <ref>', 'previous release branch/tag — code diff "from" side')
   .requiredOption('--current-ref <ref>', 'current release branch/tag — code diff "to" side')
   .requiredOption('--automation-repo <owner/name>', 'automation repo containing .feature files')
@@ -147,7 +166,7 @@ program
   .option('--module <module>', 'module to document, or "All" for every module', 'All')
   .option('--known-modules <list>', 'comma-separated known module vocabulary, needed to detect orphan-test gaps')
   .requiredOption('--docs-repo <owner/name>', 'repo the draft branch/PR is pushed to')
-  .option('--app-token <token>', 'token for --app-repo (defaults to $GITHUB_TOKEN)')
+  .option('--app-token <token>', 'token for all --app-repo repos (defaults to $GITHUB_TOKEN); must have access to each one')
   .option('--automation-token <token>', 'token for --automation-repo (defaults to $GITHUB_TOKEN)')
   .option('--docs-token <token>', 'token for --docs-repo (defaults to $GITHUB_TOKEN)')
   .option('--skip-pr', 'push the branch but do not open a pull request')
