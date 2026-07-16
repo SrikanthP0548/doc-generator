@@ -25,8 +25,79 @@ export function buildMapping(
   tests: TestScanResult,
   releaseVersion: string,
   knownModules: string[] = [],
+  selectedModule?: string,
 ): MappingResult {
   const commitFileAttributionAvailable = code.commits.some((c) => c.files && c.files.length > 0);
+
+  // If a module is pre-selected (via --module CLI flag), all code changes are
+  // treated as part of that module, and all tests (which are already filtered
+  // by test-scanner) are automatically mapped to that module.
+  if (selectedModule) {
+    const allScenarios: ScenarioMatch[] = [];
+    for (const feature of tests.features) {
+      for (const scenario of feature.scenarios) {
+        allScenarios.push({
+          file: feature.file,
+          scenario: scenario.name,
+          tags: scenario.tags,
+          matchedTag: `@${selectedModule}`,
+        });
+      }
+    }
+
+    const mappings: MappingEntry[] = [];
+    const gaps: MappingGap[] = [];
+
+    if (code.files.length > 0 && allScenarios.length > 0) {
+      // Both code changes and tests exist — create a mapping
+      const exactCaseMatch = allScenarios.some((s) => s.tags.some((t) => t.slice(1) === selectedModule));
+      const confidence = scoreConfidence({
+        exactCaseMatch,
+        scenarioCount: allScenarios.length,
+        commitCategories: [...code.commits.map((c) => c.category)],
+      });
+
+      const commitShas = new Set<string>();
+      for (const commit of code.commits) {
+        commitShas.add(commit.sha);
+      }
+
+      mappings.push({
+        module: selectedModule,
+        confidence,
+        evidence: {
+          matchedTag: `@${selectedModule}`,
+          filePaths: code.files.map((f) => f.path),
+          commitShas: [...commitShas],
+          testScenarios: allScenarios.map((s) => ({ file: s.file, scenario: s.scenario, tags: s.tags })),
+        },
+      });
+    } else if (code.files.length === 0 && allScenarios.length > 0) {
+      // Tests exist but no code changes
+      gaps.push({
+        type: 'orphan-test',
+        module: selectedModule,
+        detail: `${allScenarios.length} scenario(s) found but no code changes in this release`,
+      });
+    } else if (code.files.length > 0 && allScenarios.length === 0) {
+      // Code changes exist but no tests
+      gaps.push({
+        type: 'untested-change',
+        module: selectedModule,
+        detail: `${code.files.length} file(s) changed but no matching test scenarios were found`,
+      });
+    }
+
+    return {
+      releaseVersion,
+      generatedAt: new Date().toISOString(),
+      commitFileAttributionAvailable,
+      mappings,
+      gaps,
+    };
+  }
+
+  // Standard module matching: match tests and code by module name
 
   // module -> commit SHAs / categories, attributed via each commit's own
   // changed-file list when available (precise); when code-scanner ran
