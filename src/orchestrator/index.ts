@@ -79,7 +79,7 @@ async function run(options: CliOptions): Promise<void> {
     const knownModules = options.knownModules
       ? options.knownModules.split(',').map((m) => m.trim()).filter(Boolean)
       : [];
-    const mapping = buildMapping(codeResult, testResult, options.testTagVersion, knownModules);
+    const mapping = buildMapping(codeResult, testResult, options.testTagVersion, knownModules, options.module !== 'All' ? options.module : undefined);
     console.error(`Mapping: ${mapping.mappings.length} module(s) mapped, ${mapping.gaps.length} gap(s)`);
 
     console.error('Drafting release document...');
